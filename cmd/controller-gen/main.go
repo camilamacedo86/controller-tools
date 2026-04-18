@@ -126,6 +126,91 @@ func init() {
 // out usage in only certain situations).
 type noUsageError struct{ error }
 
+// enableApplyConfigIfMarked auto-enables the applyconfiguration generator when
+// any +kubebuilder:ac:* marker is present and the object generator is enabled,
+// unless explicitly disabled with +kubebuilder:ac:generate=false.
+func enableApplyConfigIfMarked(rt *genall.Runtime, rawOpts []string) error {
+	for _, opt := range rawOpts {
+		if strings.HasPrefix(opt, "applyconfiguration") || strings.HasPrefix(opt, "+applyconfiguration") {
+			return nil
+		}
+	}
+
+	for _, gen := range rt.Generators {
+		if _, ok := (*gen).(applyconfiguration.Generator); ok {
+			return nil
+		}
+	}
+
+	hasObjectGen := false
+	for _, gen := range rt.Generators {
+		if _, ok := (*gen).(deepcopy.Generator); ok {
+			hasObjectGen = true
+			break
+		}
+	}
+	if !hasObjectGen {
+		return nil
+	}
+
+	acGenerator := applyconfiguration.Generator{}
+	if err := acGenerator.RegisterMarkers(rt.Collector.Registry); err != nil {
+		return err
+	}
+
+	hasACMarker := false
+	for _, root := range rt.Roots {
+		pkgMarkers, err := markers.PackageMarkers(rt.Collector, root)
+		if err != nil {
+			continue
+		}
+
+		hasAnyACMarker := false
+		for markerName := range pkgMarkers {
+			if strings.HasPrefix(markerName, "kubebuilder:ac:") {
+				hasAnyACMarker = true
+				break
+			}
+		}
+
+		if hasAnyACMarker {
+			if marker := pkgMarkers.Get("kubebuilder:ac:generate"); marker != nil {
+				if enabled, ok := marker.(bool); ok && !enabled {
+					continue
+				}
+			}
+			hasACMarker = true
+			break
+		}
+	}
+
+	if !hasACMarker {
+		return nil
+	}
+
+	headerFile := ""
+	for _, gen := range rt.Generators {
+		switch g := (*gen).(type) {
+		case deepcopy.Generator:
+			headerFile = g.HeaderFile
+		case crd.Generator:
+			headerFile = g.HeaderFile
+		case webhook.Generator:
+			headerFile = g.HeaderFile
+		}
+		if headerFile != "" {
+			break
+		}
+	}
+
+	var acGen genall.Generator = applyconfiguration.Generator{
+		HeaderFile: headerFile,
+	}
+	rt.Generators = append(rt.Generators, &acGen)
+
+	return nil
+}
+
 func main() {
 	helpLevel := 0
 	whichLevel := 0
@@ -180,6 +265,11 @@ func main() {
 			if err != nil {
 				return err
 			}
+
+			if err := enableApplyConfigIfMarked(rt, rawOpts); err != nil {
+				return err
+			}
+
 			if len(rt.Generators) == 0 {
 				return fmt.Errorf("no generators specified")
 			}
