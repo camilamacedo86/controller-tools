@@ -23,6 +23,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
 
@@ -37,6 +38,45 @@ var _ = Describe("CronJob CRD", func() {
 
 		err = k8sClient.Create(ctx, crd)
 		Expect(err).NotTo(HaveOccurred())
+	})
+})
+
+// CRDs that the rest of this suite does not install. They use a dry run
+// because some of them share a name. The v1beta1 files in gen/ are skipped
+// because that API is no longer served.
+var _ = Describe("Generated CRDs", func() {
+	DescribeTable("should be accepted by the API server",
+		func(ctx SpecContext, path string) {
+			data, err := os.ReadFile(path)
+			Expect(err).NotTo(HaveOccurred())
+
+			crd := &apiextensionsv1.CustomResourceDefinition{}
+			err = yaml.UnmarshalStrict(data, crd)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = k8sClient.Create(ctx, crd, client.DryRunAll)
+			Expect(err).NotTo(HaveOccurred())
+		},
+		Entry("ExternalDocs", "testdata.kubebuilder.io_externaldocs.yaml"),
+		Entry("Job", "testdata.kubebuilder.io_jobs.yaml"),
+		Entry("Oneof", "testdata.kubebuilder.io_oneofs.yaml"),
+		Entry("VersionedResource", "multiple_versions/testdata.kubebuilder.io_versionedresources.yaml"),
+		Entry("TestQuota", "plural/plural.example.com_testquotas.yaml"),
+		Entry("Foo", "gen/bar.example.com_foos.yaml"),
+		Entry("Foo with maxDescLen", "gen/bar.example.com_foos_maxdesclen.yaml"),
+		Entry("Zoo", "gen/zoo/bar.example.com_zoos.yaml"),
+	)
+
+	It("should reject the CronJob CRD generated without a group", func(ctx SpecContext) {
+		data, err := os.ReadFile("testdata._cronjobs.yaml")
+		Expect(err).NotTo(HaveOccurred())
+
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		err = yaml.UnmarshalStrict(data, crd)
+		Expect(err).NotTo(HaveOccurred())
+
+		err = k8sClient.Create(ctx, crd, client.DryRunAll)
+		Expect(err).To(MatchError(ContainSubstring("spec.group: Required value")))
 	})
 })
 
