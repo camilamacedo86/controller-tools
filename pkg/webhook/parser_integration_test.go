@@ -150,6 +150,40 @@ var _ = Describe("Webhook Generation From Parsing to CustomResourceDefinition", 
 		Expect(err).To(MatchError("TimeoutSeconds must be between 1 and 30 seconds"))
 	})
 
+	DescribeTable("should fail when two webhooks have the same name",
+		func(dir, expectedErr string) {
+			By("switching into testdata to appease go modules")
+			cwd, err := os.Getwd()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(os.Chdir(dir)).To(Succeed()) // go modules are directory-sensitive
+			defer func() { Expect(os.Chdir(cwd)).To(Succeed()) }()
+
+			By("loading the roots")
+			pkgs, err := loader.LoadRoots(".")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(pkgs).To(HaveLen(1))
+
+			By("setting up the parser")
+			reg := &markers.Registry{}
+			Expect(reg.Register(webhook.ConfigDefinition)).To(Succeed())
+			Expect(reg.Register(webhook.WebhookConfigDefinition)).To(Succeed())
+
+			By("requesting that the manifest be generated")
+			outputDir := GinkgoT().TempDir()
+			genCtx := &genall.GenerationContext{
+				Collector:  &markers.Collector{Registry: reg},
+				Roots:      pkgs,
+				OutputRule: genall.OutputToDirectory(outputDir),
+			}
+			err = webhook.Generator{}.Generate(genCtx)
+			Expect(err).To(MatchError(expectedErr))
+		},
+		Entry("mutating", "./testdata/invalid-duplicateMutatingWebhookName",
+			"duplicate webhook name default.cronjob.testdata.kubebuilder.io in MutatingWebhookConfiguration mutating-webhook-configuration"),
+		Entry("validating", "./testdata/invalid-duplicateValidatingWebhookName",
+			"duplicate webhook name validation.cronjob.testdata.kubebuilder.io in ValidatingWebhookConfiguration validating-webhook-configuration"),
+	)
+
 	It("should properly generate the webhook definition", func() {
 		By("switching into testdata to appease go modules")
 		cwd, err := os.Getwd()

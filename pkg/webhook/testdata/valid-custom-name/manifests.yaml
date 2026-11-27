@@ -67,7 +67,7 @@ webhooks:
       path: /validate-testdata-kubebuilder-io-v1-cronjob
   failurePolicy: Fail
   matchPolicy: Equivalent
-  name: validation.cronjob.testdata.kubebuilder.io
+  name: validation.dryrun.cronjob.testdata.kubebuilder.io
   rules:
   - apiGroups:
     - testdata.kubebuilder.io

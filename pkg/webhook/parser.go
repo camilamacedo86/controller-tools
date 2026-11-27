@@ -797,6 +797,10 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 				if len(objRaw.Webhooks[i].AdmissionReviewVersions) == 0 {
 					return fmt.Errorf("AdmissionReviewVersions is mandatory for v1 {Mutating,Validating}WebhookConfiguration")
 				}
+				// Names must be unique. The list is sorted by name, so a repeated name is next to the first one.
+				if i > 0 && objRaw.Webhooks[i].Name == objRaw.Webhooks[i-1].Name {
+					return fmt.Errorf("duplicate webhook name %s in MutatingWebhookConfiguration %s", objRaw.Webhooks[i].Name, objRaw.Name)
+				}
 			}
 			versionedWebhooks[version] = append(versionedWebhooks[version], objRaw)
 		}
@@ -836,6 +840,10 @@ func (g Generator) Generate(ctx *genall.GenerationContext) error {
 				// return an error
 				if len(objRaw.Webhooks[i].AdmissionReviewVersions) == 0 {
 					return fmt.Errorf("AdmissionReviewVersions is mandatory for v1 {Mutating,Validating}WebhookConfiguration")
+				}
+				// Names must be unique. The list is sorted by name, so a repeated name is next to the first one.
+				if i > 0 && objRaw.Webhooks[i].Name == objRaw.Webhooks[i-1].Name {
+					return fmt.Errorf("duplicate webhook name %s in ValidatingWebhookConfiguration %s", objRaw.Webhooks[i].Name, objRaw.Name)
 				}
 			}
 			versionedWebhooks[version] = append(versionedWebhooks[version], objRaw)
